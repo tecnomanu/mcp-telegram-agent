@@ -22,14 +22,53 @@ function createTelegramMock() {
         },
       },
     },
+    {
+      update_id: 5002,
+      message: {
+        message_id: 102,
+        text: "continue CODE777 instance_id=cursor-a",
+        reply_to_message: {
+          message_id: 42,
+          text: "checkpoint",
+        },
+        chat: {
+          id: 889721252,
+          type: "private",
+          username: "tecnomanu",
+        },
+      },
+    },
+    {
+      update_id: 5003,
+      message: {
+        message_id: 103,
+        text: "status OTHERCODE instance_id=cursor-b",
+        reply_to_message: {
+          message_id: 42,
+          text: "checkpoint",
+        },
+        chat: {
+          id: 889721252,
+          type: "private",
+          username: "tecnomanu",
+        },
+      },
+    },
   ];
 
   const server = createServer((req, res) => {
     const url = new URL(req.url || "/", "http://127.0.0.1");
 
     if (req.method === "GET" && url.pathname === `/bot${BOT_TOKEN}/getUpdates`) {
+      const offset = Number.parseInt(url.searchParams.get("offset") || "0", 10);
       const limit = Number.parseInt(url.searchParams.get("limit") || "100", 10);
-      const result = Number.isNaN(limit) ? updates : updates.slice(-limit);
+      let result = updates;
+      if (!Number.isNaN(offset) && offset > 0) {
+        result = result.filter((item) => item.update_id >= offset);
+      }
+      if (!Number.isNaN(limit)) {
+        result = result.slice(-limit);
+      }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true, result }));
       return;
@@ -99,6 +138,9 @@ test("onboarding + notification tools work end-to-end with token flow", async ()
     assert.ok(toolNames.includes("telegram_onboarding_prepare"));
     assert.ok(toolNames.includes("telegram_onboarding_verify"));
     assert.ok(toolNames.includes("send_telegram_notification"));
+    assert.ok(toolNames.includes("telegram_send_control_checkpoint"));
+    assert.ok(toolNames.includes("telegram_poll_control_replies"));
+    assert.ok(toolNames.includes("telegram_ack_control_reply"));
 
     const prepareResult = await client.callTool({
       name: "telegram_onboarding_prepare",
@@ -187,6 +229,73 @@ test("onboarding + notification tools work end-to-end with token flow", async ()
     const updatesText = updatesResult.content?.[0]?.type === "text" ? updatesResult.content[0].text : "";
     assert.match(updatesText, /SETUP1234/);
     assert.match(updatesText, /chat_id=889721252/);
+
+    const checkpointResult = await client.callTool({
+      name: "telegram_send_control_checkpoint",
+      arguments: {
+        botToken: BOT_TOKEN,
+        chatId: "889721252",
+        instanceId: "cursor-a",
+        controlCode: "CODE777",
+        title: "Task finished",
+        summary: "Build is done. Waiting for your instruction.",
+      },
+    });
+    const checkpointText = checkpointResult.content?.[0]?.type === "text" ? checkpointResult.content[0].text : "";
+    assert.match(checkpointText, /Control checkpoint sent/);
+    assert.match(checkpointText, /control_code=CODE777/);
+
+    const checkpointMessage = mock.sentMessages.find((msg) => typeof msg.text === "string" && msg.text.includes("control_code=CODE777"));
+    assert.ok(checkpointMessage);
+
+    const pollResult = await client.callTool({
+      name: "telegram_poll_control_replies",
+      arguments: {
+        botToken: BOT_TOKEN,
+        chatId: "889721252",
+        instanceId: "cursor-a",
+        controlCode: "CODE777",
+        replyToMessageId: 42,
+        limit: 20,
+        waitSeconds: 0,
+      },
+    });
+    const pollText = pollResult.content?.[0]?.type === "text" ? pollResult.content[0].text : "";
+    assert.match(pollText, /matches=1/);
+    assert.match(pollText, /action=continue/);
+    assert.match(pollText, /next_from_update_id=5003/);
+
+    const updatesFromOffsetResult = await client.callTool({
+      name: "telegram_get_updates",
+      arguments: {
+        botToken: BOT_TOKEN,
+        fromUpdateId: 5001,
+        limit: 10,
+      },
+    });
+    const updatesFromOffsetText =
+      updatesFromOffsetResult.content?.[0]?.type === "text"
+        ? updatesFromOffsetResult.content[0].text
+        : "";
+    assert.doesNotMatch(updatesFromOffsetText, /SETUP1234/);
+    assert.match(updatesFromOffsetText, /CODE777/);
+
+    const ackResult = await client.callTool({
+      name: "telegram_ack_control_reply",
+      arguments: {
+        botToken: BOT_TOKEN,
+        chatId: "889721252",
+        replyToMessageId: 42,
+        status: "accepted",
+        title: "Action accepted",
+        summary: "Continuing with next steps now.",
+      },
+    });
+    const ackText = ackResult.content?.[0]?.type === "text" ? ackResult.content[0].text : "";
+    assert.match(ackText, /Ack sent/);
+
+    const ackMessage = mock.sentMessages.find((msg) => msg.reply_to_message_id === 42);
+    assert.ok(ackMessage);
   } finally {
     await transport.close();
     await new Promise((resolve) => mock.server.close(resolve));

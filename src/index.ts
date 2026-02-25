@@ -25,6 +25,10 @@ type TelegramUpdate = {
   message?: {
     message_id?: number;
     text?: string;
+    reply_to_message?: {
+      message_id?: number;
+      text?: string;
+    };
     chat?: {
       id?: number;
       type?: string;
@@ -47,6 +51,8 @@ type OnboardingMatch = {
   updateId: number;
   username?: string;
 };
+
+type ControlAction = "continue" | "stop" | "rerun" | "status" | "unknown";
 
 const SERVER_NAME = "telegram-agent";
 const SERVER_VERSION = "0.1.0";
@@ -129,6 +135,53 @@ function generateSetupCode(): string {
   return randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
 }
 
+function generateControlCode(): string {
+  return randomUUID().replace(/-/g, "").slice(0, 6).toUpperCase();
+}
+
+function getDefaultAgentInstanceId(): string | undefined {
+  return (
+    process.env.MCP_AGENT_INSTANCE_ID?.trim() ||
+    process.env.AGENT_INSTANCE_ID?.trim() ||
+    undefined
+  );
+}
+
+function resolveAgentInstanceId(instanceId: string | undefined): { value?: string; error?: string } {
+  const resolved = instanceId?.trim() || getDefaultAgentInstanceId();
+  if (!resolved) {
+    return {
+      error:
+        "Missing instance identifier. Pass instanceId or set MCP_AGENT_INSTANCE_ID/AGENT_INSTANCE_ID.",
+    };
+  }
+  return { value: resolved };
+}
+
+function parseControlAction(text: string | undefined): ControlAction {
+  if (!text) {
+    return "unknown";
+  }
+  const first = text.trim().split(/\s+/)[0]?.toLowerCase();
+  if (!first) {
+    return "unknown";
+  }
+
+  if (first === "continue" || first === "continuar" || first === "seguir") {
+    return "continue";
+  }
+  if (first === "stop" || first === "detener" || first === "parar") {
+    return "stop";
+  }
+  if (first === "rerun" || first === "retry" || first === "reintentar") {
+    return "rerun";
+  }
+  if (first === "status" || first === "estado") {
+    return "status";
+  }
+  return "unknown";
+}
+
 function buildMcpConfigSnippet(
   packageName: string,
   serverName: string,
@@ -205,6 +258,29 @@ function formatOnboardingCandidates(matches: OnboardingMatch[]): string {
     .join("\n");
 }
 
+function buildCheckpointMessage(payload: {
+  controlCode: string;
+  instanceId: string;
+  sessionId?: string;
+  summary: string;
+  title: string;
+}): string {
+  return [
+    `🧭 ${payload.title}`,
+    payload.summary,
+    "",
+    `instance_id=${payload.instanceId}`,
+    `session_id=${payload.sessionId || "n/a"}`,
+    `control_code=${payload.controlCode}`,
+    "",
+    "Reply to this message with:",
+    `- continue ${payload.controlCode}`,
+    `- stop ${payload.controlCode}`,
+    `- rerun ${payload.controlCode}`,
+    `- status ${payload.controlCode}`,
+  ].join("\n");
+}
+
 function buildTelegramConfig(): { config?: TelegramConfig; error?: string } {
   const token = process.env.BOT_TELEGRAM_TOKEN?.trim();
   const urlFromEnv = process.env.BOT_TELEGRAM_URL?.trim();
@@ -266,6 +342,7 @@ async function sendTelegramMessage(
     disableNotification?: boolean;
     message: string;
     parseMode?: "HTML" | "Markdown" | "MarkdownV2";
+    replyToMessageId?: number;
   },
 ): Promise<{ messageId?: number; ok: boolean; statusCode: number }> {
   const controller = new AbortController();
@@ -282,6 +359,7 @@ async function sendTelegramMessage(
         disable_notification: payload.disableNotification ?? false,
         message_thread_id: config.threadId,
         parse_mode: payload.parseMode,
+        reply_to_message_id: payload.replyToMessageId,
         text: payload.message,
       }),
       signal: controller.signal,
@@ -327,13 +405,25 @@ async function getTelegramUpdates(
   token: string,
   timeoutMs: number,
   limit: number,
+  options?: {
+    offset?: number;
+    waitSeconds?: number;
+  },
 ): Promise<TelegramUpdate[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    const search = new URLSearchParams();
+    search.set("limit", String(limit));
+    if (typeof options?.offset === "number") {
+      search.set("offset", String(options.offset));
+    }
+    if (typeof options?.waitSeconds === "number") {
+      search.set("timeout", String(options.waitSeconds));
+    }
     const response = await fetch(
-      `${buildTelegramMethodUrl(token, "getUpdates")}?limit=${limit}`,
+      `${buildTelegramMethodUrl(token, "getUpdates")}?${search.toString()}`,
       {
         method: "GET",
         signal: controller.signal,
@@ -360,6 +450,65 @@ async function getTelegramUpdates(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+type ResolvedRuntimeConfig = {
+  chatId: string;
+  config: TelegramConfig;
+  token: string;
+};
+
+async function resolveRuntimeConfigForTools(args: {
+  botToken?: string;
+  chatId?: string;
+}): Promise<{ resolved?: ResolvedRuntimeConfig; error?: string }> {
+  const tokenResult = await resolveBotTokenWithElicitationFallback(args.botToken);
+  if (tokenResult.mode === "missing") {
+    return {
+      error: tokenResult.reason,
+    };
+  }
+
+  const timeoutResult = parseTimeoutMs(process.env.BOT_TELEGRAM_TIMEOUT_MS);
+  if (!timeoutResult.timeoutMs) {
+    return {
+      error: timeoutResult.error,
+    };
+  }
+
+  const chatId =
+    args.chatId?.trim() ||
+    process.env.BOT_TELEGRAM_CHAT_ID?.trim() ||
+    process.env.BOT_TELEGRAM_ID?.trim();
+  if (!chatId) {
+    return {
+      error:
+        "Missing chat_id. Pass chatId to the tool or set BOT_TELEGRAM_CHAT_ID/BOT_TELEGRAM_ID.",
+    };
+  }
+
+  const threadIdRaw = process.env.BOT_TELEGRAM_THREAD_ID?.trim();
+  const threadId = threadIdRaw ? Number.parseInt(threadIdRaw, 10) : undefined;
+  if (threadIdRaw && Number.isNaN(threadId)) {
+    return {
+      error:
+        "Invalid BOT_TELEGRAM_THREAD_ID. Use an integer topic/thread ID.",
+    };
+  }
+
+  const config = buildTelegramConfigFromToken(
+    tokenResult.token,
+    chatId,
+    timeoutResult.timeoutMs,
+    threadId,
+  );
+  return {
+    resolved: {
+      chatId,
+      config,
+      token: tokenResult.token,
+    },
+  };
 }
 
 const server = new McpServer(
@@ -748,13 +897,283 @@ server.tool(
 );
 
 server.tool(
+  "telegram_send_control_checkpoint",
+  "Send a structured checkpoint message that users can reply to with control actions.",
+  {
+    botToken: z.string().min(10).optional(),
+    chatId: z.string().min(1).optional(),
+    controlCode: z
+      .string()
+      .min(3)
+      .max(32)
+      .regex(/^[A-Za-z0-9_-]+$/)
+      .optional(),
+    instanceId: z.string().min(2).max(80).optional(),
+    parseMode: z.enum(["HTML", "Markdown", "MarkdownV2"]).optional(),
+    sessionId: z.string().min(1).max(120).optional(),
+    summary: z.string().min(1).max(3000),
+    title: z.string().min(2).max(140),
+  },
+  async ({
+    botToken,
+    chatId,
+    controlCode,
+    instanceId,
+    parseMode,
+    sessionId,
+    summary,
+    title,
+  }) => {
+    const resolvedInstance = resolveAgentInstanceId(instanceId);
+    if (!resolvedInstance.value) {
+      return {
+        content: [{ type: "text", text: `Invalid instanceId: ${resolvedInstance.error}` }],
+        isError: true,
+      };
+    }
+    const instanceIdValue = resolvedInstance.value;
+
+    const runtime = await resolveRuntimeConfigForTools({ botToken, chatId });
+    if (!runtime.resolved) {
+      return {
+        content: [{ type: "text", text: `Configuration error: ${runtime.error}` }],
+        isError: true,
+      };
+    }
+    const resolvedRuntime = runtime.resolved;
+
+    const code = controlCode || generateControlCode();
+    const message = buildCheckpointMessage({
+      controlCode: code,
+      instanceId: resolvedInstance.value,
+      sessionId,
+      summary,
+      title,
+    });
+
+    try {
+      const sent = await sendTelegramMessage(runtime.resolved.config, {
+        message,
+        parseMode,
+      });
+
+      const responseText = [
+        "Control checkpoint sent.",
+        `chat_id=${runtime.resolved.chatId}`,
+        `message_id=${sent.messageId ?? "n/a"}`,
+        `instance_id=${resolvedInstance.value}`,
+        `control_code=${code}`,
+        "Use telegram_poll_control_replies with these values.",
+      ].join("\n");
+
+      return {
+        content: [{ type: "text", text: responseText }],
+      };
+    } catch (err) {
+      const messageText =
+        err instanceof Error ? err.message : "Unknown error while sending checkpoint.";
+      return {
+        content: [{ type: "text", text: `Failed to send control checkpoint: ${messageText}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+server.tool(
+  "telegram_poll_control_replies",
+  "Poll Telegram replies for a checkpoint message and extract control actions (continue/stop/rerun/status).",
+  {
+    actionFilter: z.enum(["continue", "stop", "rerun", "status", "unknown"]).optional(),
+    botToken: z.string().min(10).optional(),
+    chatId: z.string().min(1).optional(),
+    controlCode: z
+      .string()
+      .min(3)
+      .max(32)
+      .regex(/^[A-Za-z0-9_-]+$/),
+    fromUpdateId: z.number().int().min(0).optional(),
+    instanceId: z.string().min(2).max(80).optional(),
+    limit: z.number().int().min(1).max(100).default(50),
+    replyToMessageId: z.number().int().min(1),
+    requireReplyToMessage: z.boolean().default(true),
+    waitSeconds: z.number().int().min(0).max(50).default(20),
+  },
+  async ({
+    actionFilter,
+    botToken,
+    chatId,
+    controlCode,
+    fromUpdateId,
+    instanceId,
+    limit,
+    replyToMessageId,
+    requireReplyToMessage,
+    waitSeconds,
+  }) => {
+    const resolvedInstance = resolveAgentInstanceId(instanceId);
+    if (!resolvedInstance.value) {
+      return {
+        content: [{ type: "text", text: `Invalid instanceId: ${resolvedInstance.error}` }],
+        isError: true,
+      };
+    }
+
+    const runtime = await resolveRuntimeConfigForTools({ botToken, chatId });
+    if (!runtime.resolved) {
+      return {
+        content: [{ type: "text", text: `Configuration error: ${runtime.error}` }],
+        isError: true,
+      };
+    }
+    const resolvedRuntime = runtime.resolved;
+    const instanceIdValue = resolvedInstance.value;
+
+    try {
+      const updates = await getTelegramUpdates(
+        resolvedRuntime.token,
+        resolvedRuntime.config.timeoutMs + waitSeconds * 1000 + 1000,
+        limit,
+        {
+          offset:
+            typeof fromUpdateId === "number" ? fromUpdateId + 1 : undefined,
+          waitSeconds,
+        },
+      );
+
+      let maxUpdateId = fromUpdateId ?? 0;
+      for (const update of updates) {
+        if (update.update_id > maxUpdateId) {
+          maxUpdateId = update.update_id;
+        }
+      }
+
+      const filtered = updates
+        .map((update) => {
+          const message = update.message;
+          const text = message?.text?.trim();
+          const chat = message?.chat;
+          const chatIdMatches =
+            typeof chat?.id === "number" &&
+            String(chat.id) === resolvedRuntime.chatId;
+          if (!chatIdMatches || !text) {
+            return null;
+          }
+
+          if (
+            requireReplyToMessage &&
+            message?.reply_to_message?.message_id !== replyToMessageId
+          ) {
+            return null;
+          }
+
+          if (!text.includes(controlCode)) {
+            return null;
+          }
+
+          const hasInstance = text.includes(instanceIdValue);
+          const action = parseControlAction(text);
+          if (actionFilter && action !== actionFilter) {
+            return null;
+          }
+
+          return {
+            action,
+            chatId: resolvedRuntime.chatId,
+            hasInstance,
+            messageId: message?.message_id ?? null,
+            text,
+            updateId: update.update_id,
+            username: chat?.username ?? null,
+          };
+        })
+        .filter((item) => item !== null);
+
+      const summaryLines = filtered.map((item) => {
+        return `update_id=${item.updateId}, message_id=${item.messageId ?? "n/a"}, action=${item.action}, username=${item.username ?? "n/a"}, instance_match=${item.hasInstance}, text=${item.text}`;
+      });
+
+      const responseText = [
+        `matches=${filtered.length}`,
+        `next_from_update_id=${maxUpdateId}`,
+        filtered.length > 0 ? "messages:" : "messages: (none)",
+        ...summaryLines,
+      ].join("\n");
+
+      return {
+        content: [{ type: "text", text: responseText }],
+      };
+    } catch (err) {
+      const messageText =
+        err instanceof Error ? err.message : "Unknown error while polling replies.";
+      return {
+        content: [{ type: "text", text: `Failed to poll control replies: ${messageText}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+server.tool(
+  "telegram_ack_control_reply",
+  "Send an acknowledgement reply to a control message to confirm action status.",
+  {
+    botToken: z.string().min(10).optional(),
+    chatId: z.string().min(1).optional(),
+    replyToMessageId: z.number().int().min(1),
+    status: z.enum(["accepted", "completed", "rejected", "needs_input"]),
+    summary: z.string().min(1).max(2500),
+    title: z.string().min(2).max(140),
+  },
+  async ({ botToken, chatId, replyToMessageId, status, summary, title }) => {
+    const runtime = await resolveRuntimeConfigForTools({ botToken, chatId });
+    if (!runtime.resolved) {
+      return {
+        content: [{ type: "text", text: `Configuration error: ${runtime.error}` }],
+        isError: true,
+      };
+    }
+
+    const text = [
+      `📌 ${title}`,
+      `status=${status}`,
+      summary,
+    ].join("\n");
+
+    try {
+      const sent = await sendTelegramMessage(runtime.resolved.config, {
+        message: text,
+        replyToMessageId,
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Ack sent (status ${sent.statusCode}${sent.messageId ? `, message_id=${sent.messageId}` : ""}).`,
+          },
+        ],
+      };
+    } catch (err) {
+      const messageText =
+        err instanceof Error ? err.message : "Unknown error while sending ack.";
+      return {
+        content: [{ type: "text", text: `Failed to send ack: ${messageText}` }],
+        isError: true,
+      };
+    }
+  },
+);
+
+server.tool(
   "telegram_get_updates",
   "Get recent Telegram updates to discover chat_id and message_id.",
   {
     botToken: z.string().min(10).optional(),
+    fromUpdateId: z.number().int().min(0).optional(),
     limit: z.number().int().min(1).max(100).default(10),
+    waitSeconds: z.number().int().min(0).max(50).default(0),
   },
-  async ({ botToken, limit }) => {
+  async ({ botToken, fromUpdateId, limit, waitSeconds }) => {
     let tokenToUse: string | undefined;
     let timeoutToUse: number | undefined;
 
@@ -793,7 +1212,11 @@ server.tool(
     }
 
     try {
-      const updates = await getTelegramUpdates(tokenToUse, timeoutToUse, limit);
+      const updates = await getTelegramUpdates(tokenToUse, timeoutToUse, limit, {
+        offset:
+          typeof fromUpdateId === "number" ? fromUpdateId + 1 : undefined,
+        waitSeconds,
+      });
       if (updates.length === 0) {
         return {
           content: [

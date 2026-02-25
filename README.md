@@ -135,6 +135,32 @@ Fetch recent updates from Telegram to inspect:
 
 Useful when you are still wiring your bot and need IDs.
 
+Supports incremental polling:
+- `fromUpdateId` (fetch newer updates only)
+- `waitSeconds` (Telegram long polling timeout)
+
+### `telegram_send_control_checkpoint`
+
+Sends a structured checkpoint message (title + summary + control metadata) so users can reply with control actions.
+
+Typical usage:
+- agent says "task done"
+- user replies to that checkpoint with `continue CODE123`, `stop CODE123`, etc.
+
+### `telegram_poll_control_replies`
+
+Reads new updates and filters control replies by:
+- `replyToMessageId`
+- `controlCode`
+- `instanceId`
+- optional `actionFilter`
+
+This is designed for multi-IDE safety and uses long polling (`waitSeconds`) to reduce API churn.
+
+### `telegram_ack_control_reply`
+
+Sends an acknowledgement as a direct reply to the user control message, including status and summary.
+
 ## 🧭 Agent Command (`/setup-mcp-telegram-agent`)
 
 This repository ships:

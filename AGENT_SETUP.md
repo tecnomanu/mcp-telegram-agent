@@ -50,6 +50,21 @@ Do not stop at explanation: execute the workflow.
 9. Use the returned JSON snippet to update the user's MCP config file.
 10. Confirm success and suggest a quick test call.
 
+## Optional Control Loop (Reply-Based)
+
+After major checkpoints:
+1. Send `telegram_send_control_checkpoint` with:
+   - clear `title`
+   - short `summary`
+   - stable `instanceId` (for multi-IDE isolation)
+   - generated or provided `controlCode`
+2. Poll with `telegram_poll_control_replies` using:
+   - `replyToMessageId`
+   - `instanceId`
+   - `controlCode`
+   - `fromUpdateId` from previous poll
+3. Execute mapped action and send result using `telegram_ack_control_reply`.
+
 ## Security Rules for Setup
 
 - Never print full tokens unless user explicitly requests it.

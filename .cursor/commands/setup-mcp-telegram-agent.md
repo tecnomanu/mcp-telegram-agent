@@ -23,6 +23,7 @@ Follow repository rules in `AGENTS.md` first.
 9. Call `telegram_onboarding_verify` again with confirmed `expectedChatId`.
 10. Apply the returned MCP JSON snippet into the user's MCP config.
 11. Confirm final status and run one test via `send_telegram_notification`.
+12. Optional: send `telegram_send_control_checkpoint` so user can reply with continue/stop/rerun commands.
 
 ## Output style
 
