@@ -81,6 +81,9 @@ test("onboarding + notification tools work end-to-end with token flow", async ()
     args: ["dist/index.js"],
     cwd: process.cwd(),
     env: {
+      PATH: process.env.PATH || "",
+      HOME: process.env.HOME || "",
+      USER: process.env.USER || "",
       BOT_TELEGRAM_API_BASE_URL: baseUrl,
       BOT_TELEGRAM_CHAT_ID: "889721252",
       BOT_TELEGRAM_TOKEN: BOT_TOKEN,
