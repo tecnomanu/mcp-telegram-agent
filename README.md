@@ -7,7 +7,7 @@ This project is a **TypeScript MCP server** over `stdio`, designed to be easy to
 ## ✨ Features
 
 - ✅ Send a message to Telegram with one MCP tool call
-- ✅ Current scope: outbound/simple notifications only
+- ✅ Guided onboarding flow: token → `setup code` verification → auto config snippet
 - ✅ Validate Telegram config before sending anything
 - ✅ Read recent Telegram updates to discover `chat_id` and `message_id`
 - ✅ Works with `npx mcp-telegram-agent` in MCP config
@@ -48,6 +48,7 @@ npm run dev
 
 - `BOT_TELEGRAM_TIMEOUT_MS` (default: `10000`)
 - `BOT_TELEGRAM_THREAD_ID` (for Telegram forum topics)
+- `BOT_TELEGRAM_API_BASE_URL` (advanced/testing override, default: `https://api.telegram.org`)
 
 > Security note: Prefer `BOT_TELEGRAM_TOKEN` over `BOT_TELEGRAM_URL` so your secret is managed as a single token value.
 
@@ -89,6 +90,20 @@ npm run dev
 
 ## 🛠️ Exposed MCP Tools
 
+### `telegram_onboarding_prepare`
+
+Prepares onboarding for a fresh token and returns:
+- a setup code
+- exact message to send (plain setup code)
+- MCP config template
+
+### `telegram_onboarding_verify`
+
+Verifies onboarding by scanning updates for the setup code (plain message, or `/start <code>`) and then:
+- discovers `chat_id` + `message_id`
+- builds a ready-to-paste MCP config JSON
+- optionally sends a test message automatically
+
 ### `send_telegram_notification`
 
 Send a message to your configured Telegram chat.
@@ -114,6 +129,26 @@ Fetch recent updates from Telegram to inspect:
 - username
 
 Useful when you are still wiring your bot and need IDs.
+
+## 🧭 Agent Command (`/setup-mcp-telegram-agent`)
+
+This repository ships:
+- `AGENTS.md`
+- `.cursor/commands/setup-mcp-telegram-agent.md`
+
+Suggested chat command:
+
+```text
+/setup-mcp-telegram-agent
+```
+
+Expected flow:
+1. Ask for bot token (or direct user to create one at `https://telegram.me/BotFather#`)
+2. Run `telegram_onboarding_prepare`
+3. Ask user to send `<code>` (plain message) to the bot
+4. Run `telegram_onboarding_verify`
+5. Apply generated MCP config
+6. Send one test notification
 
 ## 📲 Telegram Bot Setup (BotFather)
 

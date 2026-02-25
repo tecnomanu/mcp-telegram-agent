@@ -10,6 +10,7 @@
   "files": [
     "dist",
     "docs/images",
+    "AGENTS.md",
     "README.md",
     "LICENSE",
     ".env.example"
@@ -20,6 +21,7 @@
     "dev": "tsx src/index.ts",
     "release": "npx semantic-release",
     "start": "node dist/index.js",
+    "test": "node --test tests/**/*.test.mjs",
     "prepublishOnly": "npm run check && npm run build"
   },
   "keywords": [
