@@ -175,26 +175,9 @@ curl -sS -X POST "https://api.telegram.org/bot<YOUR_TOKEN>/sendMessage" \
 
 ## 🚀 Publish to npm
 
-1. Log in:
+Publishing is automated with GitHub Actions + `semantic-release`.
 
-```bash
-npm login
-```
-
-2. Validate and build:
-
-```bash
-npm run check
-npm run build
-```
-
-3. Publish:
-
-```bash
-npm publish --access public
-```
-
-After publishing, users can run:
+After the first release, users can run:
 
 ```bash
 npx -y mcp-telegram-agent
@@ -203,20 +186,36 @@ npx -y mcp-telegram-agent
 ## ⚙️ GitHub Actions Auto Publish
 
 This repository includes:
-- `.github/workflows/publish-npm.yml`
+- `.github/workflows/release.yml`
+- `.releaserc.json`
 
 Behavior:
-1. Publishes to npm when you push a semver tag like `v0.1.0`
-2. Also supports manual trigger with `workflow_dispatch`
+1. Runs on each push to `main`
+2. Uses Conventional Commits to decide release type (`fix` = patch, `feat` = minor, `BREAKING CHANGE` = major)
+3. Creates GitHub release + publishes to npm
 
 Required GitHub secret:
 - `NPM_TOKEN` (npm automation token with publish permissions)
 
-Suggested release flow:
+Required commit style examples:
 
 ```bash
-npm version patch
-git push origin main --follow-tags
+fix: first automated release setup
+feat: add support for telegram topics
+```
+
+First release target (`v0.0.1`):
+1. Create and push baseline tag `v0.0.0` once.
+2. Push a `fix:` commit to `main`.
+3. Action will publish `v0.0.1`.
+
+Commands:
+
+```bash
+git tag v0.0.0
+git push origin v0.0.0
+git commit --allow-empty -m "fix: bootstrap first semantic release"
+git push origin main
 ```
 
 ## 🧩 GitHub Repository Setup

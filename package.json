@@ -18,6 +18,7 @@
     "build": "tsc -p tsconfig.json",
     "check": "tsc --noEmit -p tsconfig.json",
     "dev": "tsx src/index.ts",
+    "release": "npx semantic-release",
     "start": "node dist/index.js",
     "prepublishOnly": "npm run check && npm run build"
   },
