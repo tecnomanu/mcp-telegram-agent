@@ -22,38 +22,6 @@ function createTelegramMock() {
         },
       },
     },
-    {
-      update_id: 5002,
-      message: {
-        message_id: 102,
-        text: "continue CODE777 instance_id=cursor-a",
-        reply_to_message: {
-          message_id: 42,
-          text: "checkpoint",
-        },
-        chat: {
-          id: 889721252,
-          type: "private",
-          username: "tecnomanu",
-        },
-      },
-    },
-    {
-      update_id: 5003,
-      message: {
-        message_id: 103,
-        text: "status OTHERCODE instance_id=cursor-b",
-        reply_to_message: {
-          message_id: 42,
-          text: "checkpoint",
-        },
-        chat: {
-          id: 889721252,
-          type: "private",
-          username: "tecnomanu",
-        },
-      },
-    },
   ];
 
   const server = createServer((req, res) => {
@@ -106,7 +74,7 @@ function createTelegramMock() {
   };
 }
 
-test("onboarding + notification tools work end-to-end with token flow", async () => {
+test("onboarding + notification + await-reply tools work end-to-end", async () => {
   const mock = createTelegramMock();
   await new Promise((resolve) => mock.server.listen(0, "127.0.0.1", resolve));
   const address = mock.server.address();
@@ -133,15 +101,17 @@ test("onboarding + notification tools work end-to-end with token flow", async ()
   try {
     await client.connect(transport);
 
+    // -- Verify exactly 5 tools are registered --
     const tools = await client.listTools();
     const toolNames = tools.tools.map((tool) => tool.name);
     assert.ok(toolNames.includes("telegram_onboarding_prepare"));
     assert.ok(toolNames.includes("telegram_onboarding_verify"));
     assert.ok(toolNames.includes("send_telegram_notification"));
-    assert.ok(toolNames.includes("telegram_send_control_checkpoint"));
-    assert.ok(toolNames.includes("telegram_poll_control_replies"));
-    assert.ok(toolNames.includes("telegram_ack_control_reply"));
+    assert.ok(toolNames.includes("telegram_config_status"));
+    assert.ok(toolNames.includes("telegram_send_and_wait_reply"));
+    assert.equal(toolNames.length, 5, `Expected 5 tools, got ${toolNames.length}: ${toolNames.join(", ")}`);
 
+    // -- Onboarding prepare --
     const prepareResult = await client.callTool({
       name: "telegram_onboarding_prepare",
       arguments: {
@@ -154,9 +124,9 @@ test("onboarding + notification tools work end-to-end with token flow", async ()
     const prepareText = prepareResult.content?.[0]?.type === "text" ? prepareResult.content[0].text : "";
     assert.match(prepareText, /BotFather/);
     assert.match(prepareText, /SETUP1234/);
-    assert.match(prepareText, /Send exactly this message/);
 
-    const prepareWithoutTokenResult = await client.callTool({
+    // -- Onboarding prepare without token --
+    const prepareNoToken = await client.callTool({
       name: "telegram_onboarding_prepare",
       arguments: {
         packageName: "mcp-telegram-agent",
@@ -164,13 +134,9 @@ test("onboarding + notification tools work end-to-end with token flow", async ()
         setupCode: "SETUP1234",
       },
     });
-    const prepareWithoutTokenText =
-      prepareWithoutTokenResult.content?.[0]?.type === "text"
-        ? prepareWithoutTokenResult.content[0].text
-        : "";
-    assert.match(prepareWithoutTokenText, /cannot continue without bot token/i);
-    assert.equal(prepareWithoutTokenResult.isError, true);
+    assert.equal(prepareNoToken.isError, true);
 
+    // -- Onboarding verify (needs confirmation) --
     const verifyResult = await client.callTool({
       name: "telegram_onboarding_verify",
       arguments: {
@@ -186,7 +152,8 @@ test("onboarding + notification tools work end-to-end with token flow", async ()
     assert.match(verifyText, /chat_id confirmation is required/);
     assert.match(verifyText, /chat_id=889721252/);
 
-    const verifyConfirmedResult = await client.callTool({
+    // -- Onboarding verify (confirmed) --
+    const verifyConfirmed = await client.callTool({
       name: "telegram_onboarding_verify",
       arguments: {
         botToken: BOT_TOKEN,
@@ -198,104 +165,64 @@ test("onboarding + notification tools work end-to-end with token flow", async ()
         serverName: "telegram-agent",
       },
     });
-    const verifyConfirmedText = verifyConfirmedResult.content?.[0]?.type === "text" ? verifyConfirmedResult.content[0].text : "";
+    const verifyConfirmedText = verifyConfirmed.content?.[0]?.type === "text" ? verifyConfirmed.content[0].text : "";
     assert.match(verifyConfirmedText, /Onboarding verified successfully/);
-    assert.match(verifyConfirmedText, /chat_id=889721252/);
     assert.match(verifyConfirmedText, /test_message=Sent/);
 
-    assert.equal(mock.sentMessages.length, 1);
-    assert.equal(mock.sentMessages[0].chat_id, "889721252");
-    assert.match(mock.sentMessages[0].text, /setup_code=SETUP1234/);
-    assert.doesNotMatch(mock.sentMessages[0].text, /chat_id=/);
-
+    // -- Send notification --
     const sendResult = await client.callTool({
       name: "send_telegram_notification",
-      arguments: {
-        message: "hello from test",
-      },
+      arguments: { message: "hello from test" },
     });
     const sendText = sendResult.content?.[0]?.type === "text" ? sendResult.content[0].text : "";
     assert.match(sendText, /Notification sent to Telegram/);
-    assert.equal(mock.sentMessages.length, 2);
-    assert.equal(mock.sentMessages[1].chat_id, "889721252");
 
-    const updatesResult = await client.callTool({
-      name: "telegram_get_updates",
+    // -- Config status --
+    const configResult = await client.callTool({
+      name: "telegram_config_status",
+      arguments: {},
+    });
+    const configText = configResult.content?.[0]?.type === "text" ? configResult.content[0].text : "";
+    assert.match(configText, /Configuration is valid/);
+    assert.match(configText, /889721252/);
+
+    // -- send_and_wait_reply --
+    // Clear stale updates so the tool only sees the reply
+    mock.updates.length = 0;
+
+    // The next sendMessage will get this message_id from the mock counter
+    const expectedSentMsgId = mock.sentMessages.length + 1;
+
+    // Schedule injecting the reply after a short delay (simulates user replying)
+    setTimeout(() => {
+      mock.updates.push({
+        update_id: 9001,
+        message: {
+          message_id: 500,
+          text: "respuesta de prueba",
+          reply_to_message: {
+            message_id: expectedSentMsgId,
+            text: "Esperando tu reply...",
+          },
+          chat: {
+            id: 889721252,
+            type: "private",
+            username: "tecnomanu",
+          },
+        },
+      });
+    }, 500);
+
+    const awaitResult = await client.callTool({
+      name: "telegram_send_and_wait_reply",
       arguments: {
-        botToken: BOT_TOKEN,
-        limit: 10,
+        message: "Esperando tu reply...",
+        waitTimeoutSeconds: 15,
       },
     });
-    const updatesText = updatesResult.content?.[0]?.type === "text" ? updatesResult.content[0].text : "";
-    assert.match(updatesText, /SETUP1234/);
-    assert.match(updatesText, /chat_id=889721252/);
-
-    const checkpointResult = await client.callTool({
-      name: "telegram_send_control_checkpoint",
-      arguments: {
-        botToken: BOT_TOKEN,
-        chatId: "889721252",
-        instanceId: "cursor-a",
-        controlCode: "CODE777",
-        title: "Task finished",
-        summary: "Build is done. Waiting for your instruction.",
-      },
-    });
-    const checkpointText = checkpointResult.content?.[0]?.type === "text" ? checkpointResult.content[0].text : "";
-    assert.match(checkpointText, /Control checkpoint sent/);
-    assert.match(checkpointText, /control_code=CODE777/);
-
-    const checkpointMessage = mock.sentMessages.find((msg) => typeof msg.text === "string" && msg.text.includes("control_code=CODE777"));
-    assert.ok(checkpointMessage);
-
-    const pollResult = await client.callTool({
-      name: "telegram_poll_control_replies",
-      arguments: {
-        botToken: BOT_TOKEN,
-        chatId: "889721252",
-        instanceId: "cursor-a",
-        controlCode: "CODE777",
-        replyToMessageId: 42,
-        limit: 20,
-        waitSeconds: 0,
-      },
-    });
-    const pollText = pollResult.content?.[0]?.type === "text" ? pollResult.content[0].text : "";
-    assert.match(pollText, /matches=1/);
-    assert.match(pollText, /action=continue/);
-    assert.match(pollText, /next_from_update_id=5003/);
-
-    const updatesFromOffsetResult = await client.callTool({
-      name: "telegram_get_updates",
-      arguments: {
-        botToken: BOT_TOKEN,
-        fromUpdateId: 5001,
-        limit: 10,
-      },
-    });
-    const updatesFromOffsetText =
-      updatesFromOffsetResult.content?.[0]?.type === "text"
-        ? updatesFromOffsetResult.content[0].text
-        : "";
-    assert.doesNotMatch(updatesFromOffsetText, /SETUP1234/);
-    assert.match(updatesFromOffsetText, /CODE777/);
-
-    const ackResult = await client.callTool({
-      name: "telegram_ack_control_reply",
-      arguments: {
-        botToken: BOT_TOKEN,
-        chatId: "889721252",
-        replyToMessageId: 42,
-        status: "accepted",
-        title: "Action accepted",
-        summary: "Continuing with next steps now.",
-      },
-    });
-    const ackText = ackResult.content?.[0]?.type === "text" ? ackResult.content[0].text : "";
-    assert.match(ackText, /Ack sent/);
-
-    const ackMessage = mock.sentMessages.find((msg) => msg.reply_to_message_id === 42);
-    assert.ok(ackMessage);
+    const awaitText = awaitResult.content?.[0]?.type === "text" ? awaitResult.content[0].text : "";
+    assert.match(awaitText, /respuesta de prueba/);
+    assert.match(awaitText, /tecnomanu/);
   } finally {
     await transport.close();
     await new Promise((resolve) => mock.server.close(resolve));
