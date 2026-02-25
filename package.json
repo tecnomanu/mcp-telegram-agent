@@ -34,7 +34,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tecnomanu/mcp-telegram-agent.git"
+    "url": "git+https://github.com/tecnomanu/mcp-telegram-agent.git"
   },
   "homepage": "https://github.com/tecnomanu/mcp-telegram-agent#readme",
   "bugs": {
