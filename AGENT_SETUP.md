@@ -26,6 +26,8 @@ Do not stop at explanation: execute the workflow.
    - `args: ["-y", "mcp-telegram-agent"]`
 2. Ask the user for a Telegram bot token.
    - If they do not have a bot yet, send them to: `https://telegram.me/BotFather#`
+   - If client supports elicitation, you may call onboarding tool without `botToken` and let MCP request secure input.
+   - If elicitation is not supported, request token in chat and pass `botToken` explicitly.
 3. Call `telegram_onboarding_prepare` with:
    - `botToken` = user token
    - `serverName` = `telegram-agent` (or user preference)

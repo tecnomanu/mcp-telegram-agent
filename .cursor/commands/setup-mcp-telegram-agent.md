@@ -10,6 +10,7 @@ Follow repository rules in `AGENTS.md` first.
    - `args: ["-y", "mcp-telegram-agent"]`
 2. Ask the user for `BOT_TELEGRAM_TOKEN`.
    - If they do not have a bot yet, send them to: `https://telegram.me/BotFather#`
+   - If client supports secure input (elicitation), you can omit token args and let MCP prompt it.
 3. Call tool `telegram_onboarding_prepare` using that token.
 4. Extract `setupCode` from the tool output.
 5. Ask the user to press Start if needed, then send `<setupCode>` as a plain message to their bot in Telegram.

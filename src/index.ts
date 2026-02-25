@@ -75,6 +75,17 @@ function buildTelegramMethodUrl(token: string, method: string): string {
   return `${getTelegramApiBaseUrl()}/bot${token}/${method}`;
 }
 
+function extractTokenFromElicitationResult(
+  content: Record<string, unknown> | undefined,
+): string | undefined {
+  const token = content?.botToken;
+  if (typeof token !== "string") {
+    return undefined;
+  }
+  const trimmed = token.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 function buildTelegramConfigFromToken(
   token: string,
   chatId: string,
@@ -362,6 +373,64 @@ const server = new McpServer(
   },
 );
 
+async function resolveBotTokenWithElicitationFallback(
+  botToken: string | undefined,
+): Promise<
+  | { mode: "provided" | "elicited"; token: string }
+  | { mode: "missing"; reason: string }
+> {
+  const provided = botToken?.trim();
+  if (provided && provided.length > 0) {
+    return { mode: "provided", token: provided };
+  }
+
+  try {
+    const result = await server.server.elicitInput({
+      mode: "form",
+      message:
+        "Provide BOT_TELEGRAM_TOKEN to continue Telegram MCP onboarding. If you do not have one yet, create a bot at https://telegram.me/BotFather#",
+      requestedSchema: {
+        type: "object",
+        properties: {
+          botToken: {
+            type: "string",
+            title: "BOT_TELEGRAM_TOKEN",
+            description: "Telegram bot token from BotFather.",
+            minLength: 10,
+          },
+        },
+        required: ["botToken"],
+      },
+    });
+
+    if (result.action !== "accept") {
+      return {
+        mode: "missing",
+        reason:
+          "Token input was declined/cancelled. Please call again with botToken in chat parameters.",
+      };
+    }
+
+    const token = extractTokenFromElicitationResult(result.content);
+    if (!token) {
+      return {
+        mode: "missing",
+        reason:
+          "Invalid token from elicitation input. Please call again with botToken in chat parameters.",
+      };
+    }
+
+    return { mode: "elicited", token };
+  } catch (err) {
+    const detail =
+      err instanceof Error ? err.message : "Client does not support elicitation.";
+    return {
+      mode: "missing",
+      reason: `Elicitation unavailable (${detail}). Please provide botToken in the tool call.`,
+    };
+  }
+}
+
 server.registerPrompt(
   "agent-install-and-onboard",
   {
@@ -396,7 +465,7 @@ server.tool(
   "telegram_onboarding_prepare",
   "Prepare onboarding instructions to link a Telegram bot and auto-generate MCP config.",
   {
-    botToken: z.string().min(10, "botToken is too short."),
+    botToken: z.string().min(10, "botToken is too short.").optional(),
     packageName: z.string().min(1).max(120).default("mcp-telegram-agent"),
     serverName: z.string().min(1).max(120).default("telegram-agent"),
     setupCode: z
@@ -407,11 +476,31 @@ server.tool(
       .optional(),
   },
   async ({ botToken, packageName, serverName, setupCode }) => {
+    const resolvedToken = await resolveBotTokenWithElicitationFallback(botToken);
+    if (resolvedToken.mode === "missing") {
+      return {
+        content: [
+          {
+            type: "text",
+            text: [
+              "Onboarding cannot continue without bot token.",
+              resolvedToken.reason,
+              "If you still need a bot, create it first via BotFather: https://telegram.me/BotFather#",
+            ].join("\n"),
+          },
+        ],
+        isError: true,
+      };
+    }
+
     const code = setupCode || generateSetupCode();
-    const masked = maskToken(botToken.trim());
+    const masked = maskToken(resolvedToken.token);
+    const tokenSource =
+      resolvedToken.mode === "elicited" ? "secure input prompt" : "tool arguments";
 
     const guidance = [
       "Onboarding prepared successfully.",
+      `Token source: ${tokenSource}`,
       `Token received (masked): ${masked}`,
       `Setup code: ${code}`,
       "",
@@ -445,7 +534,7 @@ server.tool(
   "telegram_onboarding_verify",
   "Verify setup code in Telegram updates, require explicit chat_id confirmation, generate ready MCP config, and optionally send a test message.",
   {
-    botToken: z.string().min(10, "botToken is too short."),
+    botToken: z.string().min(10, "botToken is too short.").optional(),
     expectedChatId: z.string().min(1).optional(),
     limit: z.number().int().min(1).max(100).default(60),
     packageName: z.string().min(1).max(120).default("mcp-telegram-agent"),
@@ -470,6 +559,23 @@ server.tool(
     setupCode,
     testMessage,
   }) => {
+    const resolvedToken = await resolveBotTokenWithElicitationFallback(botToken);
+    if (resolvedToken.mode === "missing") {
+      return {
+        content: [
+          {
+            type: "text",
+            text: [
+              "Onboarding verification cannot continue without bot token.",
+              resolvedToken.reason,
+              "You can create/retrieve token via BotFather: https://telegram.me/BotFather#",
+            ].join("\n"),
+          },
+        ],
+        isError: true,
+      };
+    }
+
     const timeoutResult = parseTimeoutMs(process.env.BOT_TELEGRAM_TIMEOUT_MS);
     if (!timeoutResult.timeoutMs) {
       return {
@@ -479,7 +585,7 @@ server.tool(
     }
 
     try {
-      const normalizedToken = botToken.trim();
+      const normalizedToken = resolvedToken.token;
       const updates = await getTelegramUpdates(
         normalizedToken,
         timeoutResult.timeoutMs,

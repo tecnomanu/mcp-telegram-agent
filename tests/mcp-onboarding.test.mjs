@@ -114,6 +114,21 @@ test("onboarding + notification tools work end-to-end with token flow", async ()
     assert.match(prepareText, /SETUP1234/);
     assert.match(prepareText, /Send exactly this message/);
 
+    const prepareWithoutTokenResult = await client.callTool({
+      name: "telegram_onboarding_prepare",
+      arguments: {
+        packageName: "mcp-telegram-agent",
+        serverName: "telegram-agent",
+        setupCode: "SETUP1234",
+      },
+    });
+    const prepareWithoutTokenText =
+      prepareWithoutTokenResult.content?.[0]?.type === "text"
+        ? prepareWithoutTokenResult.content[0].text
+        : "";
+    assert.match(prepareWithoutTokenText, /cannot continue without bot token/i);
+    assert.equal(prepareWithoutTokenResult.isError, true);
+
     const verifyResult = await client.callTool({
       name: "telegram_onboarding_verify",
       arguments: {

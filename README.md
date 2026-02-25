@@ -98,6 +98,7 @@ Prepares onboarding for a fresh token and returns:
 - a setup code
 - exact message to send (plain setup code)
 - MCP config template
+- if `botToken` is omitted and client supports elicitation, MCP requests secure token input UI
 
 ### `telegram_onboarding_verify`
 
@@ -106,6 +107,7 @@ Verifies onboarding by scanning updates for the setup code (plain message, or `/
 - builds a ready-to-paste MCP config JSON
 - optionally sends a test message automatically
 - supports cautious mode with explicit `chat_id` confirmation (`requireChatIdConfirmation` + `expectedChatId`)
+- if `botToken` is omitted and client supports elicitation, MCP requests secure token input UI
 
 ### `send_telegram_notification`
 
