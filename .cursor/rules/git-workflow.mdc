@@ -1,0 +1,51 @@
+---
+description: Git workflow, commit style, and quality gate rules for this project
+globs: **/*
+alwaysApply: true
+---
+
+# Git Workflow Rules
+
+## Branch Strategy
+
+```text
+feature/*  ---> PR ---> main
+fix/*      ---> PR ---> main
+hotfix/*   ---> main (emergency only)
+```
+
+- `main` is release-only.
+- Avoid direct development on `main`.
+- One branch per responsibility.
+- Do not mix unrelated changes.
+
+## Commit Format
+
+Use English Conventional Commits with emoji:
+
+- `feat(scope): ✨ add feature`
+- `fix(scope): 🐛 fix bug`
+- `docs(scope): 📝 update docs`
+- `refactor(scope): ♻️ refactor code`
+- `test(scope): ✅ add/update tests`
+- `chore(scope): 🔧 maintenance`
+
+## Required Validation Before PR/Push
+
+Run:
+
+```bash
+npm run check
+npm run build
+npm run test
+```
+
+Rules:
+- Keep tests green.
+- If behavior changes, update tests.
+
+## Onboarding Execution Rule
+
+- If user asks to install/configure this MCP, execute tools end-to-end.
+- Do not stop at explanation-only responses.
+- Require explicit `chat_id` confirmation before finalizing onboarding.

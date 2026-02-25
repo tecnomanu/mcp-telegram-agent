@@ -1,3 +1,5 @@
+> 🤖 **If you are an AI agent:** read [AGENTS.md](./AGENTS.md) first, then [AGENT_SETUP.md](./AGENT_SETUP.md).
+
 # 🤖 MCP Telegram Agent
 
 Send Telegram notifications directly from any MCP-compatible AI agent.
@@ -103,6 +105,7 @@ Verifies onboarding by scanning updates for the setup code (plain message, or `/
 - discovers `chat_id` + `message_id`
 - builds a ready-to-paste MCP config JSON
 - optionally sends a test message automatically
+- supports cautious mode with explicit `chat_id` confirmation (`requireChatIdConfirmation` + `expectedChatId`)
 
 ### `send_telegram_notification`
 
@@ -134,6 +137,7 @@ Useful when you are still wiring your bot and need IDs.
 
 This repository ships:
 - `AGENTS.md`
+- `AGENT_SETUP.md`
 - `.cursor/commands/setup-mcp-telegram-agent.md`
 
 Suggested chat command:
@@ -143,12 +147,15 @@ Suggested chat command:
 ```
 
 Expected flow:
-1. Ask for bot token (or direct user to create one at `https://telegram.me/BotFather#`)
-2. Run `telegram_onboarding_prepare`
-3. Ask user to send `<code>` (plain message) to the bot
-4. Run `telegram_onboarding_verify`
-5. Apply generated MCP config
-6. Send one test notification
+1. Install/activate MCP first with `npx -y mcp-telegram-agent` (no token required yet)
+2. Ask for bot token (or direct user to create one at `https://telegram.me/BotFather#`)
+3. Run `telegram_onboarding_prepare`
+4. Ask user to send `<code>` (plain message) to the bot
+5. Run `telegram_onboarding_verify` in confirmation mode to list candidates
+6. Ask user to confirm exact `chat_id`
+7. Run `telegram_onboarding_verify` again with `expectedChatId`
+8. Apply generated MCP config
+9. Send one test notification
 
 ## 📲 Telegram Bot Setup (BotFather)
 

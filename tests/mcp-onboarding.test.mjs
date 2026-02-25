@@ -126,9 +126,25 @@ test("onboarding + notification tools work end-to-end with token flow", async ()
       },
     });
     const verifyText = verifyResult.content?.[0]?.type === "text" ? verifyResult.content[0].text : "";
-    assert.match(verifyText, /Onboarding verified successfully/);
+    assert.match(verifyText, /chat_id confirmation is required/);
     assert.match(verifyText, /chat_id=889721252/);
-    assert.match(verifyText, /test_message=Sent/);
+
+    const verifyConfirmedResult = await client.callTool({
+      name: "telegram_onboarding_verify",
+      arguments: {
+        botToken: BOT_TOKEN,
+        setupCode: "SETUP1234",
+        expectedChatId: "889721252",
+        limit: 20,
+        sendTestMessage: true,
+        packageName: "mcp-telegram-agent",
+        serverName: "telegram-agent",
+      },
+    });
+    const verifyConfirmedText = verifyConfirmedResult.content?.[0]?.type === "text" ? verifyConfirmedResult.content[0].text : "";
+    assert.match(verifyConfirmedText, /Onboarding verified successfully/);
+    assert.match(verifyConfirmedText, /chat_id=889721252/);
+    assert.match(verifyConfirmedText, /test_message=Sent/);
 
     assert.equal(mock.sentMessages.length, 1);
     assert.equal(mock.sentMessages[0].chat_id, "889721252");

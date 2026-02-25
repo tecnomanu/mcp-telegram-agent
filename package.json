@@ -11,6 +11,7 @@
     "dist",
     "docs/images",
     "AGENTS.md",
+    "AGENT_SETUP.md",
     "README.md",
     "LICENSE",
     ".env.example"

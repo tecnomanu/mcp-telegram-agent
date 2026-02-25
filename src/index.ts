@@ -142,11 +142,13 @@ function buildMcpConfigSnippet(
   );
 }
 
-function findOnboardingMessageMatch(
+function findOnboardingMessageMatches(
   updates: TelegramUpdate[],
   setupCode: string,
-): OnboardingMatch | null {
+): OnboardingMatch[] {
   const normalizedCode = setupCode.trim();
+  const matches: OnboardingMatch[] = [];
+
   for (const item of [...updates].reverse()) {
     const message = item.message;
     const rawText = message?.text?.trim() || "";
@@ -167,15 +169,29 @@ function findOnboardingMessageMatch(
       continue;
     }
 
-    return {
+    matches.push({
       chatId: String(chatId),
       messageId: message?.message_id,
       text: message?.text,
       updateId: item.update_id,
       username: message?.chat?.username,
-    };
+    });
   }
-  return null;
+  return matches;
+}
+
+function formatOnboardingCandidates(matches: OnboardingMatch[]): string {
+  const unique = new Map<string, OnboardingMatch>();
+  for (const match of matches) {
+    if (!unique.has(match.chatId)) {
+      unique.set(match.chatId, match);
+    }
+  }
+  return [...unique.values()]
+    .map((match) => {
+      return `- chat_id=${match.chatId}, username=${match.username ?? "n/a"}, message_id=${match.messageId ?? "n/a"}, update_id=${match.updateId}, sample_text=${match.text ?? "n/a"}`;
+    })
+    .join("\n");
 }
 
 function buildTelegramConfig(): { config?: TelegramConfig; error?: string } {
@@ -335,10 +351,46 @@ async function getTelegramUpdates(
   }
 }
 
-const server = new McpServer({
-  name: SERVER_NAME,
-  version: SERVER_VERSION,
-});
+const server = new McpServer(
+  {
+    name: SERVER_NAME,
+    version: SERVER_VERSION,
+  },
+  {
+    instructions:
+      "If user asks to install/configure this MCP, execute onboarding tools (do not only describe). First ensure MCP is active in client, then run telegram_onboarding_prepare, request setup code message in bot chat, run telegram_onboarding_verify to collect candidates, ask user to confirm expected chat_id, then finalize verification and optional test notification.",
+  },
+);
+
+server.registerPrompt(
+  "agent-install-and-onboard",
+  {
+    title: "Install + Onboard MCP Telegram Agent",
+    description:
+      "Operational protocol for agents to install, activate, and execute secure onboarding with chat_id confirmation.",
+  },
+  async () => ({
+    messages: [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: [
+            "Agent protocol:",
+            "1) Ensure MCP is installed and activated first (npx mcp-telegram-agent).",
+            "2) Ask for bot token (or send user to https://telegram.me/BotFather#).",
+            "3) Run telegram_onboarding_prepare.",
+            "4) Ask user to send setup code as plain message in bot chat.",
+            "5) Run telegram_onboarding_verify without expectedChatId to list candidates.",
+            "6) Ask user to confirm exact chat_id.",
+            "7) Run telegram_onboarding_verify again with expectedChatId and optional test message.",
+            "8) Return final MCP config snippet.",
+          ].join("\n"),
+        },
+      },
+    ],
+  }),
+);
 
 server.tool(
   "telegram_onboarding_prepare",
@@ -391,11 +443,13 @@ server.tool(
 
 server.tool(
   "telegram_onboarding_verify",
-  "Verify /start <setupCode> in Telegram updates, discover chat_id, generate ready MCP config, and optionally send a test message.",
+  "Verify setup code in Telegram updates, require explicit chat_id confirmation, generate ready MCP config, and optionally send a test message.",
   {
     botToken: z.string().min(10, "botToken is too short."),
+    expectedChatId: z.string().min(1).optional(),
     limit: z.number().int().min(1).max(100).default(60),
     packageName: z.string().min(1).max(120).default("mcp-telegram-agent"),
+    requireChatIdConfirmation: z.boolean().default(true),
     sendTestMessage: z.boolean().default(true),
     serverName: z.string().min(1).max(120).default("telegram-agent"),
     setupCode: z
@@ -407,8 +461,10 @@ server.tool(
   },
   async ({
     botToken,
+    expectedChatId,
     limit,
     packageName,
+    requireChatIdConfirmation,
     sendTestMessage,
     serverName,
     setupCode,
@@ -429,9 +485,9 @@ server.tool(
         timeoutResult.timeoutMs,
         limit,
       );
-      const match = findOnboardingMessageMatch(updates, setupCode);
+      const matches = findOnboardingMessageMatches(updates, setupCode);
 
-      if (!match) {
+      if (matches.length === 0) {
         return {
           content: [
             {
@@ -443,18 +499,64 @@ server.tool(
         };
       }
 
+      const selectedMatch = expectedChatId
+        ? matches.find((match) => match.chatId === expectedChatId)
+        : matches[0];
+
+      if (expectedChatId && !selectedMatch) {
+        const candidates = formatOnboardingCandidates(matches);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Expected chat_id "${expectedChatId}" was not found for setup code "${setupCode}". Available candidates:\n${candidates}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      if (requireChatIdConfirmation && !expectedChatId) {
+        const candidates = formatOnboardingCandidates(matches);
+        return {
+          content: [
+            {
+              type: "text",
+              text: [
+                `Setup code "${setupCode}" was found, but chat_id confirmation is required.`,
+                "Candidate chats:",
+                candidates,
+                'Call telegram_onboarding_verify again with "expectedChatId" set to the confirmed chat ID.',
+              ].join("\n"),
+            },
+          ],
+        };
+      }
+
+      if (!selectedMatch) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Failed to select a chat candidate for onboarding verification.",
+            },
+          ],
+          isError: true,
+        };
+      }
+
       const configJson = buildMcpConfigSnippet(
         packageName,
         serverName,
         normalizedToken,
-        match.chatId,
+        selectedMatch.chatId,
       );
 
       let testStatus = "Skipped";
       if (sendTestMessage) {
         const config = buildTelegramConfigFromToken(
           normalizedToken,
-          match.chatId,
+          selectedMatch.chatId,
           timeoutResult.timeoutMs,
         );
         const text =
@@ -466,10 +568,10 @@ server.tool(
 
       const responseText = [
         "Onboarding verified successfully.",
-        `chat_id=${match.chatId}`,
-        `message_id=${match.messageId ?? "n/a"}`,
-        `update_id=${match.updateId}`,
-        `username=${match.username ?? "n/a"}`,
+        `chat_id=${selectedMatch.chatId}`,
+        `message_id=${selectedMatch.messageId ?? "n/a"}`,
+        `update_id=${selectedMatch.updateId}`,
+        `username=${selectedMatch.username ?? "n/a"}`,
         `test_message=${testStatus}`,
         "",
         "Use this MCP config:",

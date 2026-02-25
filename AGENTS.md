@@ -1,49 +1,86 @@
-# MCP Telegram Agent - Agent Command Guide
+# AGENTS.md
 
-This file defines a reusable command workflow for AI coding agents (Cursor, Claude Code, Codex, etc.).
+Project-wide rules for AI coding agents working in this repository.
 
-## Command
+## Scope
 
-Use this command in chat:
+- Apply these rules to the whole repository.
+- If another local rule file exists in a subfolder, the most specific file wins for that subfolder.
 
-`/setup-mcp-telegram-agent`
+## Main Policy
 
-## Goal
+- `main` is the release branch.
+- Pushing to `main` triggers automated release/publish flow.
+- Do not push direct changes to `main` for normal feature/fix work.
 
-Install and configure `mcp-telegram-agent` for the current user with minimum manual work.
+## Branch Strategy (GitHub)
 
-## Required tools from this MCP
+```text
+feature/*  ---> Pull Request ---> main
+fix/*      ---> Pull Request ---> main
+hotfix/*   ---> main (emergencies only)
+```
 
-- `telegram_onboarding_prepare`
-- `telegram_onboarding_verify`
+Rules:
+- Use a separate branch for each responsibility.
+- Do not mix unrelated tasks in the same branch.
+- If a new request is unrelated, propose creating a new branch.
+- Use `hotfix/*` only for urgent production issues.
 
-## Expected flow for the AI agent
+## Commit Rules
 
-1. Ask the user for a Telegram bot token.
-   - If they do not have a bot yet, tell them to create it at: `https://telegram.me/BotFather#`
-2. Call `telegram_onboarding_prepare` with:
-   - `botToken` = user token
-   - `serverName` = `telegram-agent` (or user preference)
-   - `packageName` = `mcp-telegram-agent`
-3. Read the returned setup code and ask user to send:
-   - `<SETUP_CODE>` (plain message)
-   - If needed, ask user to press Start first in Telegram.
-4. Ask user to confirm they sent that command.
-5. Call `telegram_onboarding_verify` with:
-   - same `botToken`
-   - same `setupCode`
-   - `sendTestMessage = true`
-6. Use the returned JSON snippet to update the user's MCP config file.
-7. Confirm success and provide a short test prompt:
-   - "send_telegram_notification with message='Hello from MCP'"
+- Use Conventional Commits in English.
+- Add a relevant emoji in the subject.
+- Keep commit scope clear and focused.
 
-## Security rules for agents
+Format:
 
-- Never print full tokens in final output unless explicitly requested.
-- Prefer masked output and write secrets only in config files.
-- If verification fails, ask the user to resend `<SETUP_CODE>` exactly.
+```text
+type(scope): emoji short description
+```
 
-## Cursor-specific note
+Examples:
+- `feat(onboarding): ✨ add setup-code verification fallback`
+- `fix(ci): 🐛 use CI-safe test glob`
+- `docs(readme): 📝 add agent-first entrypoint`
+- `test(mcp): ✅ add onboarding integration test`
+- `chore(workflow): 🔧 adjust release pipeline`
 
-If using Cursor project slash commands, map this flow to:
-- `.cursor/commands/setup-mcp-telegram-agent.md`
+## Quality Gates (Required)
+
+Before creating PR or pushing important changes, run:
+
+```bash
+npm run check
+npm run build
+npm run test
+```
+
+Rules:
+- Keep tests green.
+- If behavior changes, update/add tests.
+- Never skip tests silently.
+
+## Release Rules
+
+- Do not create manual releases unless explicitly requested by the user.
+- Respect existing automation in `.github/workflows/release.yml`.
+- Use commit types intentionally (`feat`, `fix`, `docs`, `test`, `chore`) since release logic depends on commits.
+
+## Security Rules
+
+- Never expose full secrets/tokens in logs or final responses unless user explicitly asks.
+- Prefer masked token output in explanations.
+
+## Mandatory Onboarding Behavior
+
+- If user asks to install/configure this MCP, do not stop at explanation.
+- Execute the onboarding flow with tools and ask only the required confirmations.
+- Always require explicit `chat_id` confirmation before finalizing onboarding and sending test notifications.
+
+## Agent Onboarding Command Guide
+
+For the Telegram MCP setup command flow, read:
+
+- [AGENT_SETUP.md](./AGENT_SETUP.md)
+- [.cursor/commands/setup-mcp-telegram-agent.md](./.cursor/commands/setup-mcp-telegram-agent.md)
