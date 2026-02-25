@@ -1,0 +1,57 @@
+{
+  "name": "mcp-telegram-notify",
+  "version": "0.1.0",
+  "description": "MCP server to send Telegram notifications from AI agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-telegram-notify": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "docs/images",
+    "README.md",
+    "LICENSE",
+    ".env.example"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc --noEmit -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run check && npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai-agent",
+    "telegram",
+    "notifications",
+    "typescript"
+  ],
+  "author": "tecnomanu",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tecnomanu/mcp-telegram-notify-.git"
+  },
+  "homepage": "https://github.com/tecnomanu/mcp-telegram-notify-#readme",
+  "bugs": {
+    "url": "https://github.com/tecnomanu/mcp-telegram-notify-/issues"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b253d"/>
+      <stop offset="100%" stop-color="#123457"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect x="110" y="80" width="980" height="470" rx="28" fill="url(#card)" stroke="#38bdf8" stroke-width="2"/>
+  <circle cx="235" cy="210" r="64" fill="#38bdf8"/>
+  <text x="325" y="190" font-family="Arial, sans-serif" font-size="46" fill="#f8fafc" font-weight="700">BotFather</text>
+  <text x="325" y="235" font-family="Arial, sans-serif" font-size="28" fill="#bae6fd">@BotFather</text>
+  <rect x="190" y="310" width="820" height="168" rx="18" fill="#0b1f33" stroke="#334155"/>
+  <text x="220" y="360" font-family="Arial, sans-serif" font-size="30" fill="#f8fafc">1) Open Telegram and search for @BotFather</text>
+  <text x="220" y="405" font-family="Arial, sans-serif" font-size="30" fill="#f8fafc">2) Start chat and run /newbot</text>
+  <text x="220" y="450" font-family="Arial, sans-serif" font-size="30" fill="#f8fafc">3) Save the bot token securely</text>
+</svg>
