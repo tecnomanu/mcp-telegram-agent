@@ -1,11 +1,11 @@
 {
-  "name": "mcp-telegram-notify",
+  "name": "mcp-telegram-agent",
   "version": "0.1.0",
   "description": "MCP server to send Telegram notifications from AI agents",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "mcp-telegram-notify": "dist/index.js"
+    "mcp-telegram-agent": "dist/index.js"
   },
   "files": [
     "dist",
@@ -33,11 +33,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tecnomanu/mcp-telegram-notify-.git"
+    "url": "https://github.com/tecnomanu/mcp-telegram-agent.git"
   },
-  "homepage": "https://github.com/tecnomanu/mcp-telegram-notify-#readme",
+  "homepage": "https://github.com/tecnomanu/mcp-telegram-agent#readme",
   "bugs": {
-    "url": "https://github.com/tecnomanu/mcp-telegram-notify-/issues"
+    "url": "https://github.com/tecnomanu/mcp-telegram-agent/issues"
   },
   "engines": {
     "node": ">=18.17"

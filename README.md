@@ -1,4 +1,4 @@
-# 🤖 MCP Telegram Notify
+# 🤖 MCP Telegram Agent
 
 Send Telegram notifications directly from any MCP-compatible AI agent.
 
@@ -7,9 +7,10 @@ This project is a **TypeScript MCP server** over `stdio`, designed to be easy to
 ## ✨ Features
 
 - ✅ Send a message to Telegram with one MCP tool call
+- ✅ Current scope: outbound/simple notifications only
 - ✅ Validate Telegram config before sending anything
 - ✅ Read recent Telegram updates to discover `chat_id` and `message_id`
-- ✅ Works with `npx mcp-telegram-notify` in MCP config
+- ✅ Works with `npx mcp-telegram-agent` in MCP config
 - ✅ Token-first setup (safer than hardcoding full API URL)
 
 ## 📦 Installation
@@ -19,7 +20,7 @@ This project is a **TypeScript MCP server** over `stdio`, designed to be easy to
 No local clone required in production:
 
 ```bash
-npx -y mcp-telegram-notify
+npx -y mcp-telegram-agent
 ```
 
 ### Option B: Local development
@@ -57,9 +58,9 @@ npm run dev
 ```json
 {
   "mcpServers": {
-    "telegram-notify": {
+    "telegram-agent": {
       "command": "npx",
-      "args": ["-y", "mcp-telegram-notify"],
+      "args": ["-y", "mcp-telegram-agent"],
       "env": {
         "BOT_TELEGRAM_TOKEN": "123456789:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
         "BOT_TELEGRAM_CHAT_ID": "889721252"
@@ -74,9 +75,9 @@ npm run dev
 ```json
 {
   "mcpServers": {
-    "telegram-notify": {
+    "telegram-agent": {
       "command": "node",
-      "args": ["/ABSOLUTE/PATH/mcp_telegram_notify/dist/index.js"],
+      "args": ["/ABSOLUTE/PATH/mcp_telegram_agent/dist/index.js"],
       "env": {
         "BOT_TELEGRAM_TOKEN": "123456789:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
         "BOT_TELEGRAM_CHAT_ID": "889721252"
@@ -196,7 +197,26 @@ npm publish --access public
 After publishing, users can run:
 
 ```bash
-npx -y mcp-telegram-notify
+npx -y mcp-telegram-agent
+```
+
+## ⚙️ GitHub Actions Auto Publish
+
+This repository includes:
+- `.github/workflows/publish-npm.yml`
+
+Behavior:
+1. Publishes to npm when you push a semver tag like `v0.1.0`
+2. Also supports manual trigger with `workflow_dispatch`
+
+Required GitHub secret:
+- `NPM_TOKEN` (npm automation token with publish permissions)
+
+Suggested release flow:
+
+```bash
+npm version patch
+git push origin main --follow-tags
 ```
 
 ## 🧩 GitHub Repository Setup
@@ -206,9 +226,9 @@ If this is a fresh local directory:
 ```bash
 git init
 git add .
-git commit -m "Initial MCP telegram notify server"
+git commit -m "Initial MCP telegram agent server"
 git branch -M main
-git remote add origin https://github.com/tecnomanu/mcp-telegram-notify-.git
+git remote add origin https://github.com/tecnomanu/mcp-telegram-agent.git
 git push -u origin main
 ```
 

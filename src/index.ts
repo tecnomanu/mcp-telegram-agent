@@ -34,7 +34,7 @@ type TelegramUpdate = {
   };
 };
 
-const SERVER_NAME = "telegram-notify";
+const SERVER_NAME = "telegram-agent";
 const SERVER_VERSION = "0.1.0";
 
 function buildTelegramConfig(): { config?: TelegramConfig; error?: string } {
