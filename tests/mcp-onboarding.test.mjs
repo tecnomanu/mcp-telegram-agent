@@ -63,6 +63,20 @@ function createTelegramMock() {
       return;
     }
 
+    if (req.method === "POST" && url.pathname === `/bot${BOT_TOKEN}/editMessageText`) {
+      let raw = "";
+      req.on("data", (chunk) => {
+        raw += chunk.toString();
+      });
+      req.on("end", () => {
+        const parsed = JSON.parse(raw);
+        sentMessages.push({ ...parsed, _edited: true });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, result: { message_id: parsed.message_id } }));
+      });
+      return;
+    }
+
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: false, description: "Not found in mock server" }));
   });
@@ -109,7 +123,8 @@ test("onboarding + notification + await-reply tools work end-to-end", async () =
     assert.ok(toolNames.includes("send_telegram_notification"));
     assert.ok(toolNames.includes("telegram_config_status"));
     assert.ok(toolNames.includes("telegram_send_and_wait_reply"));
-    assert.equal(toolNames.length, 5, `Expected 5 tools, got ${toolNames.length}: ${toolNames.join(", ")}`);
+    assert.ok(toolNames.includes("telegram_edit_message"));
+    assert.equal(toolNames.length, 6, `Expected 6 tools, got ${toolNames.length}: ${toolNames.join(", ")}`);
 
     // -- Onboarding prepare --
     const prepareResult = await client.callTool({
@@ -223,6 +238,22 @@ test("onboarding + notification + await-reply tools work end-to-end", async () =
     const awaitText = awaitResult.content?.[0]?.type === "text" ? awaitResult.content[0].text : "";
     assert.match(awaitText, /respuesta de prueba/);
     assert.match(awaitText, /tecnomanu/);
+    assert.match(awaitText, /ack_message_id: \d+/);
+
+    // Extract ack_message_id and test telegram_edit_message
+    const ackIdMatch = awaitText.match(/ack_message_id: (\d+)/);
+    assert.ok(ackIdMatch, "ack_message_id should be a number");
+    const ackMsgId = Number.parseInt(ackIdMatch[1], 10);
+
+    const editResult = await client.callTool({
+      name: "telegram_edit_message",
+      arguments: {
+        messageId: ackMsgId,
+        text: "Listo, tarea completada.",
+      },
+    });
+    const editText = editResult.content?.[0]?.type === "text" ? editResult.content[0].text : "";
+    assert.match(editText, /edited successfully/);
   } finally {
     await transport.close();
     await new Promise((resolve) => mock.server.close(resolve));

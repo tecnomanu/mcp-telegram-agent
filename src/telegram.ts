@@ -162,6 +162,45 @@ export async function sendTelegramMessage(
   }
 }
 
+export async function editTelegramMessage(
+  token: string,
+  chatId: string,
+  messageId: number,
+  text: string,
+  timeoutMs: number,
+  parseMode?: "HTML" | "Markdown" | "MarkdownV2",
+): Promise<{ ok: boolean }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(buildTelegramMethodUrl(token, "editMessageText"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: messageId,
+        text,
+        parse_mode: parseMode,
+      }),
+      signal: controller.signal,
+    });
+
+    const raw = await response.text();
+    const parsed = raw ? (JSON.parse(raw) as { ok?: boolean; description?: string }) : {};
+
+    if (!response.ok || !parsed.ok) {
+      throw new Error(
+        `editMessageText failed (${response.status}): ${parsed.description || "Unknown error."}`,
+      );
+    }
+
+    return { ok: true };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function getTelegramUpdates(
   token: string,
   timeoutMs: number,

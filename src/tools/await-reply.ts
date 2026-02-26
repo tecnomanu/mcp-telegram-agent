@@ -3,12 +3,13 @@ import { z } from "zod";
 import { SERVER_NAME } from "../constants.js";
 import {
   buildTelegramConfig,
+  editTelegramMessage,
   getTelegramUpdates,
   sendTelegramMessage,
 } from "../telegram.js";
 import { getLastUpdateId, setLastUpdateId } from "./polling.js";
 
-const DEFAULT_WAIT_TIMEOUT_S = 120;
+const DEFAULT_WAIT_TIMEOUT_S = 18000; // 5 hours
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -20,21 +21,28 @@ export function registerAwaitReplyTools(server: McpServer): void {
     {
       description: [
         "Send a message to Telegram and block until a reply arrives in the same chat.",
-        "Returns the reply text so you can act on it.",
+        "Sends an instant ACK back to Telegram when a reply is received.",
+        "Returns reply text + ack_message_id so you can later edit the ACK with your final response.",
       ].join(" "),
       inputSchema: {
         message: z.string().min(1).describe("Message text to send"),
         waitTimeoutSeconds: z
           .number()
           .min(10)
-          .max(600)
+          .max(43200)
           .default(DEFAULT_WAIT_TIMEOUT_S)
           .optional()
-          .describe("Max seconds to wait for a reply (default 120)"),
+          .describe("Max seconds to wait for a reply (default 18000 = 5h)"),
         parseMode: z.enum(["HTML", "Markdown", "MarkdownV2"]).optional(),
+        ackText: z
+          .string()
+          .max(500)
+          .default("✅ Recibido, procesando...")
+          .optional()
+          .describe("ACK message sent immediately upon receiving a reply"),
       },
     },
-    async ({ message, waitTimeoutSeconds, parseMode }) => {
+    async ({ message, waitTimeoutSeconds, parseMode, ackText }) => {
       const { config, error } = buildTelegramConfig();
       if (!config?.token) {
         return {
@@ -107,6 +115,21 @@ export function registerAwaitReplyTools(server: McpServer): void {
                 `[${SERVER_NAME}] Reply from ${from}: "${replyText.slice(0, 80)}"`,
               );
 
+              // Send instant ACK as reply to the user's message
+              let ackMsgId: number | undefined;
+              try {
+                const ackResult = await sendTelegramMessage(config, {
+                  message: ackText ?? "✅ Recibido, procesando...",
+                  replyToMessageId: msg.message_id,
+                });
+                ackMsgId = ackResult.messageId;
+                console.error(
+                  `[${SERVER_NAME}] ACK sent (msg_id=${ackMsgId})`,
+                );
+              } catch {
+                console.error(`[${SERVER_NAME}] ACK send failed`);
+              }
+
               return {
                 content: [
                   {
@@ -117,6 +140,7 @@ export function registerAwaitReplyTools(server: McpServer): void {
                       `is_direct_reply: ${isDirectReply}`,
                       `msg_id: ${msg.message_id}`,
                       `sent_msg_id: ${sentMsgId}`,
+                      `ack_message_id: ${ackMsgId ?? "n/a"}`,
                       "",
                       replyText,
                     ].join("\n"),
@@ -140,6 +164,57 @@ export function registerAwaitReplyTools(server: McpServer): void {
           },
         ],
       };
+    },
+  );
+
+  server.registerTool(
+    "telegram_edit_message",
+    {
+      description:
+        "Edit a previously sent Telegram message by its message_id. Use to replace the ACK with a final response.",
+      inputSchema: {
+        messageId: z.number().int().min(1).describe("ID of the message to edit"),
+        text: z.string().min(1).max(4096).describe("New message text"),
+        parseMode: z.enum(["HTML", "Markdown", "MarkdownV2"]).optional(),
+      },
+    },
+    async ({ messageId, text, parseMode }) => {
+      const { config, error } = buildTelegramConfig();
+      if (!config?.token) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Config error: ${error ?? "BOT_TELEGRAM_TOKEN required"}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      try {
+        await editTelegramMessage(
+          config.token,
+          config.chatId,
+          messageId,
+          text,
+          config.timeoutMs,
+          parseMode,
+        );
+        return {
+          content: [
+            { type: "text", text: `Message ${messageId} edited successfully.` },
+          ],
+        };
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        return {
+          content: [
+            { type: "text", text: `Failed to edit message: ${detail}` },
+          ],
+          isError: true,
+        };
+      }
     },
   );
 }
