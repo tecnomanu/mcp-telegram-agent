@@ -63,6 +63,35 @@ function createTelegramMock() {
       return;
     }
 
+    const mediaRoutes = [
+      `/bot${BOT_TOKEN}/sendPhoto`,
+      `/bot${BOT_TOKEN}/sendAudio`,
+      `/bot${BOT_TOKEN}/sendDocument`,
+    ];
+    if (req.method === "POST" && mediaRoutes.includes(url.pathname)) {
+      let raw = "";
+      req.on("data", (chunk) => {
+        raw += chunk.toString();
+      });
+      req.on("end", () => {
+        let parsed;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          parsed = { _raw: raw, _multipart: true };
+        }
+        sentMessages.push({ ...parsed, _mediaRoute: url.pathname });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            result: { message_id: nextMessageId++ },
+          }),
+        );
+      });
+      return;
+    }
+
     if (req.method === "POST" && url.pathname === `/bot${BOT_TOKEN}/editMessageText`) {
       let raw = "";
       req.on("data", (chunk) => {
@@ -254,6 +283,34 @@ test("onboarding + notification + await-reply tools work end-to-end", async () =
     });
     const editText = editResult.content?.[0]?.type === "text" ? editResult.content[0].text : "";
     assert.match(editText, /edited successfully/);
+
+    // -- Send notification with media (photo URL) --
+    const mediaResult = await client.callTool({
+      name: "send_telegram_notification",
+      arguments: {
+        message: "Check this image",
+        media: { type: "photo", url: "https://example.com/photo.jpg" },
+      },
+    });
+    const mediaText = mediaResult.content?.[0]?.type === "text" ? mediaResult.content[0].text : "";
+    assert.match(mediaText, /photo notification sent to Telegram/);
+
+    // -- Send notification with media only (no caption) --
+    const mediaNoCaption = await client.callTool({
+      name: "send_telegram_notification",
+      arguments: {
+        media: { type: "document", url: "https://example.com/report.pdf" },
+      },
+    });
+    const mediaNoCaptionText = mediaNoCaption.content?.[0]?.type === "text" ? mediaNoCaption.content[0].text : "";
+    assert.equal(mediaNoCaption.isError, undefined);
+
+    // -- Validation: neither message nor media --
+    const emptyResult = await client.callTool({
+      name: "send_telegram_notification",
+      arguments: {},
+    });
+    assert.equal(emptyResult.isError, true);
   } finally {
     await transport.close();
     await new Promise((resolve) => mock.server.close(resolve));

@@ -2,7 +2,13 @@ import {
   DEFAULT_TIMEOUT_MS,
   TELEGRAM_API_BASE_URL_DEFAULT,
 } from "./constants.js";
-import type { TelegramApiResponse, TelegramConfig, TelegramUpdate } from "./types.js";
+import type { MediaPayload, MediaType, TelegramApiResponse, TelegramConfig, TelegramUpdate } from "./types.js";
+
+const MEDIA_METHOD: Record<MediaType, { method: string; field: string }> = {
+  photo: { method: "sendPhoto", field: "photo" },
+  audio: { method: "sendAudio", field: "audio" },
+  document: { method: "sendDocument", field: "document" },
+};
 
 export function parseTimeoutMs(rawTimeoutMs: string | undefined): { timeoutMs?: number; error?: string } {
   const timeoutMs = Number.parseInt(rawTimeoutMs?.trim() || String(DEFAULT_TIMEOUT_MS), 10);
@@ -150,6 +156,98 @@ export async function sendTelegramMessage(
       throw new Error(
         `Telegram API rejected the message: ${jsonBody.description || "Unknown error."}`,
       );
+    }
+
+    return {
+      messageId: jsonBody?.result?.message_id,
+      ok: true,
+      statusCode: response.status,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function sendTelegramMedia(
+  config: TelegramConfig,
+  payload: {
+    media: MediaPayload;
+    caption?: string;
+    parseMode?: "HTML" | "Markdown" | "MarkdownV2";
+    disableNotification?: boolean;
+    replyToMessageId?: number;
+  },
+): Promise<{ messageId?: number; ok: boolean; statusCode: number }> {
+  if (!config.token) {
+    throw new Error("Media sending requires BOT_TELEGRAM_TOKEN (token-based config).");
+  }
+
+  const { media, caption, parseMode, disableNotification, replyToMessageId } = payload;
+  const { method, field } = MEDIA_METHOD[media.type];
+  const url = buildTelegramMethodUrl(config.token, method);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
+
+  try {
+    let response: Response;
+
+    if (media.url) {
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: config.chatId,
+          [field]: media.url,
+          caption,
+          parse_mode: parseMode,
+          disable_notification: disableNotification ?? false,
+          message_thread_id: config.threadId,
+          reply_to_message_id: replyToMessageId,
+        }),
+        signal: controller.signal,
+      });
+    } else if (media.base64Data) {
+      const binary = Buffer.from(media.base64Data, "base64");
+      const blob = new Blob([binary], { type: media.mimeType ?? "application/octet-stream" });
+      const form = new FormData();
+      form.append("chat_id", config.chatId);
+      form.append(field, blob, media.filename ?? `file.${media.type === "photo" ? "jpg" : "bin"}`);
+      if (caption) form.append("caption", caption);
+      if (parseMode) form.append("parse_mode", parseMode);
+      form.append("disable_notification", String(disableNotification ?? false));
+      if (config.threadId) form.append("message_thread_id", String(config.threadId));
+      if (replyToMessageId) form.append("reply_to_message_id", String(replyToMessageId));
+
+      response = await fetch(url, {
+        method: "POST",
+        body: form,
+        signal: controller.signal,
+      });
+    } else {
+      throw new Error("Media requires either 'url' or 'base64Data'.");
+    }
+
+    const rawBody = await response.text();
+    let jsonBody: TelegramApiResponse | null = null;
+
+    if (rawBody) {
+      try {
+        jsonBody = JSON.parse(rawBody) as TelegramApiResponse;
+      } catch {
+        if (!response.ok) {
+          throw new Error(`Telegram returned status ${response.status} and a non-JSON body.`);
+        }
+      }
+    }
+
+    if (!response.ok) {
+      const description = jsonBody?.description || "Unknown Telegram API error.";
+      throw new Error(`Telegram API error (${response.status}): ${description}`);
+    }
+
+    if (jsonBody && !jsonBody.ok) {
+      throw new Error(`Telegram API rejected the media: ${jsonBody.description || "Unknown error."}`);
     }
 
     return {

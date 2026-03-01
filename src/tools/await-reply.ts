@@ -1,10 +1,12 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { SERVER_NAME } from "../constants.js";
+import type { MediaPayload } from "../types.js";
 import {
   buildTelegramConfig,
   editTelegramMessage,
   getTelegramUpdates,
+  sendTelegramMedia,
   sendTelegramMessage,
 } from "../telegram.js";
 import { getLastUpdateId, setLastUpdateId } from "./polling.js";
@@ -15,17 +17,37 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const mediaSchema = z
+  .object({
+    type: z.enum(["photo", "audio", "document"]),
+    url: z.string().optional(),
+    base64Data: z.string().optional(),
+    filename: z.string().optional(),
+    mimeType: z.string().optional(),
+  })
+  .refine((m) => m.url || m.base64Data, {
+    message: "Media requires either 'url' or 'base64Data'.",
+  })
+  .optional()
+  .describe(
+    "Optional media attachment (photo, audio, or document). Provide a public url OR base64Data.",
+  );
+
 export function registerAwaitReplyTools(server: McpServer): void {
   server.registerTool(
     "telegram_send_and_wait_reply",
     {
       description: [
-        "Send a message to Telegram and block until a reply arrives in the same chat.",
+        "Send a message (or media) to Telegram and block until a reply arrives in the same chat.",
         "Sends an instant ACK back to Telegram when a reply is received.",
         "Returns reply text + ack_message_id so you can later edit the ACK with your final response.",
       ].join(" "),
       inputSchema: {
-        message: z.string().min(1).describe("Message text to send"),
+        message: z
+          .string()
+          .max(3500)
+          .optional()
+          .describe("Message text to send (or caption when media is attached). Required if no media."),
         waitTimeoutSeconds: z
           .number()
           .min(10)
@@ -40,9 +62,17 @@ export function registerAwaitReplyTools(server: McpServer): void {
           .default("✅ Recibido, procesando...")
           .optional()
           .describe("ACK message sent immediately upon receiving a reply"),
+        media: mediaSchema,
       },
     },
-    async ({ message, waitTimeoutSeconds, parseMode, ackText }) => {
+    async ({ message, waitTimeoutSeconds, parseMode, ackText, media }) => {
+      if (!media && !message) {
+        return {
+          content: [{ type: "text", text: "Either message or media must be provided." }],
+          isError: true,
+        };
+      }
+
       const { config, error } = buildTelegramConfig();
       if (!config?.token) {
         return {
@@ -61,10 +91,20 @@ export function registerAwaitReplyTools(server: McpServer): void {
       const timeoutMs = config.timeoutMs;
       const maxWaitMs = (waitTimeoutSeconds ?? DEFAULT_WAIT_TIMEOUT_S) * 1000;
 
-      const sendResult = await sendTelegramMessage(config, {
-        message,
-        parseMode,
-      });
+      let sendResult: { messageId?: number; ok: boolean; statusCode: number };
+
+      if (media) {
+        sendResult = await sendTelegramMedia(config, {
+          media: media as MediaPayload,
+          caption: message,
+          parseMode,
+        });
+      } else {
+        sendResult = await sendTelegramMessage(config, {
+          message: message as string,
+          parseMode,
+        });
+      }
 
       if (!sendResult.ok || !sendResult.messageId) {
         return {

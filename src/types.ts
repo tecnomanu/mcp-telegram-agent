@@ -46,6 +46,20 @@ export type OnboardingMatch = {
   username?: string;
 };
 
+export type MediaType = "photo" | "audio" | "document";
+
+export type MediaPayload = {
+  type: MediaType;
+  /** Public URL – Telegram will fetch it directly */
+  url?: string;
+  /** Base64-encoded file content (used when no URL) */
+  base64Data?: string;
+  /** Filename hint (relevant for document / audio) */
+  filename?: string;
+  /** MIME type when sending base64 data */
+  mimeType?: string;
+};
+
 export type ResolveBotTokenResult =
   | { mode: "provided" | "elicited"; token: string }
   | { mode: "missing"; reason: string };
