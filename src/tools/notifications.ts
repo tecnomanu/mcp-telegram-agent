@@ -5,26 +5,32 @@ import { buildTelegramConfig, sendTelegramMedia, sendTelegramMessage } from '../
 
 const mediaSchema = z
 	.object({
-		type: z.enum(['photo', 'audio', 'document']),
-		url: z.string().optional(),
-		base64Data: z.string().optional(),
-		filename: z.string().optional(),
-		mimeType: z.string().optional(),
+		type: z.enum(['photo', 'audio', 'document']).describe(
+			"'photo' for images (jpg/png/gif/webp), 'audio' for music/voice (mp3/ogg/wav), 'document' for any file (pdf, zip, etc.).",
+		),
+		url: z.string().optional().describe('Public URL pointing directly to the file. Telegram will download it.'),
+		base64Data: z.string().optional().describe('Base64-encoded file content. Use when the file is local or generated in-memory.'),
+		filename: z.string().optional().describe('Suggested filename (e.g. "report.pdf"). Recommended for documents and audio.'),
+		mimeType: z.string().optional().describe('MIME type (e.g. "image/png", "audio/mpeg"). Recommended when using base64Data.'),
 	})
 	.refine((m) => m.url || m.base64Data, {
 		message: "Media requires either 'url' or 'base64Data'.",
 	})
 	.optional()
 	.describe(
-		'Optional media attachment (photo, audio, or document). Provide a public url OR base64Data.',
+		'Attach a photo, audio file, or document to the message. Supply either a public url OR base64Data (not both).',
 	);
 
 export function registerNotificationTools(server: McpServer): void {
 	server.registerTool(
 		'send_telegram_notification',
 		{
-			description:
-				'Send a notification to the configured Telegram chat. Supports text-only or media (photo/audio/document) with an optional caption.',
+			description: [
+				'Send a notification to the configured Telegram chat.',
+				'Supports: plain text, photo, audio, or document — with an optional caption.',
+				'You can send text only, media only, or media + caption together.',
+				'For media: provide a media object with type and either a public url or base64Data.',
+			].join(' '),
 			inputSchema: {
 				disableNotification: z.boolean().optional(),
 				message: z
