@@ -11,7 +11,7 @@
   <rect x="120" y="190" width="960" height="320" rx="16" fill="#111827" stroke="#334155"/>
   <text x="150" y="250" font-family="Courier New, monospace" font-size="30" fill="#a7f3d0">https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</text>
   <text x="150" y="305" font-family="Arial, sans-serif" font-size="28" fill="#f9fafb">Look for:</text>
-  <text x="190" y="355" font-family="Courier New, monospace" font-size="27" fill="#fde68a">"chat": { "id": 889721252, ... }</text>
+  <text x="190" y="355" font-family="Courier New, monospace" font-size="27" fill="#fde68a">"chat": { "id": 123456789, ... }</text>
   <text x="190" y="400" font-family="Courier New, monospace" font-size="27" fill="#fde68a">"message_id": 207</text>
   <text x="150" y="460" font-family="Arial, sans-serif" font-size="26" fill="#93c5fd">Use chat_id in BOT_TELEGRAM_CHAT_ID (or BOT_TELEGRAM_ID).</text>
 </svg>

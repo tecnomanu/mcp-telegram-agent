@@ -16,7 +16,7 @@ function createTelegramMock() {
         message_id: 101,
         text: "SETUP1234",
         chat: {
-          id: 889721252,
+          id: 123456789,
           type: "private",
           username: "tecnomanu",
         },
@@ -135,7 +135,7 @@ test("onboarding + notification + await-reply tools work end-to-end", async () =
       HOME: process.env.HOME || "",
       USER: process.env.USER || "",
       BOT_TELEGRAM_API_BASE_URL: baseUrl,
-      BOT_TELEGRAM_CHAT_ID: "889721252",
+      BOT_TELEGRAM_CHAT_ID: "123456789",
       BOT_TELEGRAM_TOKEN: BOT_TOKEN,
     },
   });
@@ -194,7 +194,7 @@ test("onboarding + notification + await-reply tools work end-to-end", async () =
     });
     const verifyText = verifyResult.content?.[0]?.type === "text" ? verifyResult.content[0].text : "";
     assert.match(verifyText, /chat_id confirmation is required/);
-    assert.match(verifyText, /chat_id=889721252/);
+    assert.match(verifyText, /chat_id=123456789/);
 
     // -- Onboarding verify (confirmed) --
     const verifyConfirmed = await client.callTool({
@@ -202,7 +202,7 @@ test("onboarding + notification + await-reply tools work end-to-end", async () =
       arguments: {
         botToken: BOT_TOKEN,
         setupCode: "SETUP1234",
-        expectedChatId: "889721252",
+        expectedChatId: "123456789",
         limit: 20,
         sendTestMessage: true,
         packageName: "mcp-telegram-agent",
@@ -228,7 +228,7 @@ test("onboarding + notification + await-reply tools work end-to-end", async () =
     });
     const configText = configResult.content?.[0]?.type === "text" ? configResult.content[0].text : "";
     assert.match(configText, /Configuration is valid/);
-    assert.match(configText, /889721252/);
+    assert.match(configText, /123456789/);
 
     // -- send_and_wait_reply --
     // Clear stale updates so the tool only sees the reply
@@ -249,7 +249,7 @@ test("onboarding + notification + await-reply tools work end-to-end", async () =
             text: "Esperando tu reply...",
           },
           chat: {
-            id: 889721252,
+            id: 123456789,
             type: "private",
             username: "tecnomanu",
           },

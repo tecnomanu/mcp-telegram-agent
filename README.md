@@ -66,7 +66,7 @@ npm run dev
       "args": ["-y", "mcp-telegram-agent"],
       "env": {
         "BOT_TELEGRAM_TOKEN": "123456789:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-        "BOT_TELEGRAM_CHAT_ID": "889721252"
+        "BOT_TELEGRAM_CHAT_ID": "123456789"
       }
     }
   }
@@ -83,7 +83,7 @@ npm run dev
       "args": ["/ABSOLUTE/PATH/mcp_telegram_agent/dist/index.js"],
       "env": {
         "BOT_TELEGRAM_TOKEN": "123456789:AAxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-        "BOT_TELEGRAM_CHAT_ID": "889721252"
+        "BOT_TELEGRAM_CHAT_ID": "123456789"
       }
     }
   }
